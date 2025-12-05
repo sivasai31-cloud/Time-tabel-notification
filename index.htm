@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Campus Timetable Notifier</title>
+<link rel="manifest" href="manifest.json">
+<style>
+  :root{
+    --bg:#061427; --card:rgba(255,255,255,0.03); --muted:#9fb0c8; --accent:#ff8a00;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,system-ui,Roboto,Arial;background:linear-gradient(180deg,#02111b,#061427);color:#eaf2fb;min-height:100vh;padding:18px;display:flex;justify-content:center}
+  .wrap{width:100%;max-width:1100px}
+  header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  h1{margin:0;font-size:20px}
+  .grid{display:grid;grid-template-columns:1fr 360px;gap:14px}
+  .card{background:var(--card);padding:12px;border-radius:12px;box-shadow:0 10px 30px rgba(2,6,23,0.6)}
+  input,select,button,textarea{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
+  form.row{display:flex;gap:8px;flex-wrap:wrap}
+  .small{font-size:13px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.03);font-size:13px}
+  .week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:10px}
+  .day-card{background:rgba(255,255,255,0.02);padding:8px;border-radius:8px;min-height:90px}
+  .event{background:rgba(255,255,255,0.03);padding:6px;border-radius:6px;margin-bottom:6px;font-size:13px}
+  .controls{display:flex;gap:8px;flex-wrap:wrap}
+  .inline{display:inline-flex;gap:8px;align-items:center}
+  @media(max-width:980px){ .grid{grid-template-columns:1fr} .week-grid{grid-template-columns:repeat(2,1fr)} }
+  @media(max-width:560px){ .week-grid{grid-template-columns:repeat(1,1fr)} form.row{flex-direction:column} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Campus Timetable Notifier</h1>
+    <div class="small">Save timetable • Install as app • Get reminders</div>
+  </header>
+
+  <div class="grid">
+    <!-- left: main -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <label class="small">Student / Class</label><br>
+          <input id="user" placeholder="Enter your name or class (e.g., II-A)" />
+        </div>
+        <div style="text-align:right">
+          <button id="btnLoad">Load</button>
+          <button id="btnSave">Save</button>
+          <button id="btnClear">Clear</button>
+        </div>
+      </div>
+
+      <hr style="margin:10px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)">
+
+      <h3 style="margin:6px 0">Add / Edit weekly class</h3>
+      <form id="addForm" class="row">
+        <input id="cname" placeholder="Subject (e.g., DBMS)" required />
+        <select id="cday">
+          <option value="Mon">Mon</option><option value="Tue">Tue</option><option value="Wed">Wed</option>
+          <option value="Thu">Thu</option><option value="Fri">Fri</option><option value="Sat">Sat</option>
+          <option value="Sun">Sun</option>
+        </select>
+        <input id="ctime" type="time" required />
+        <input id="cdur" type="number" min="10" value="50" style="width:88px" />
+        <select id="crem">
+          <option value="0">At time</option><option value="5">5 min before</option>
+          <option value="10" selected>10 min before</option><option value="30">30 min before</option>
+        </select>
+        <button type="submit">Add</button>
+      </form>
+
+      <div class="small" style="margin-top:8px">Add recurring weekly classes. Save under your name/class so other students can load it from the same device/browser.</div>
+
+      <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)">
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <h3 style="margin:0">Weekly Timetable</h3>
+        <div class="inline">
+          <button id="btnExport">Export JSON</button>
+          <button id="btnImport">Import JSON</button>
+          <input id="fileIn" type="file" accept="application/json" style="display:none" />
+        </div>
+      </div>
+
+      <div id="week" class="week-grid" aria-live="polite"></div>
+
+      <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)">
+
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="small">Notifications: <button id="reqPerm">Request Permission</button></div>
+        <div class="small">Missed/Upcoming for today shown on Login</div>
+      </div>
+
+    </div>
+
+    <!-- right: sidebar -->
+    <aside class="card">
+      <h3 style="margin-top:0">Controls</h3>
+      <div class="controls" style="margin-bottom:8px">
+        <button id="btnLogin">Login / Use Saved (check missed)</button>
+        <button id="btnScheduleAll">Schedule next</button>
+        <button id="btnInstall" style="display:none">Install App</button>
+      </div>
+
+      <div style="margin-top:10px">
+        <div class="small">Saved profiles on device:</div>
+        <select id="profiles" size="6" style="width:100%;margin-top:6px"></select>
+        <div style="margin-top:8px" class="small">Pick a profile to load that timetable. Profiles are saved per browser (localStorage).</div>
+      </div>
+
+      <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)">
+
+      <div>
+        <div class="small"><strong>How it works</strong></div>
+        <ol class="small">
+          <li>Enter name/class → Add weekly classes → Save.</li>
+          <li>Tap Login / Use Saved when you open the app — it will notify missed classes immediately and schedule reminders for upcoming classes.</li>
+          <li>Install as PWA for better background behavior.</li>
+        </ol>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+/*
+  Campus Timetable Notifier - frontend only
+  - Save/load timetables per user (localStorage)
+  - Weekly recurring classes (Mon..Sun)
+  - On Login: detect missed classes today and show notifications + schedule upcoming reminders
+  - Schedules next weekly occurrence for each timetable row
+  - Uses Service Worker showNotification when possible
+*/
+
+const STORAGE_PROFILES = 'ct_profiles_v1'; // stores map: name -> timetable array
+const STORAGE_CURRENT = 'ct_current_user_v1';
+
+let profiles = JSON.parse(localStorage.getItem(STORAGE_PROFILES) || '{}');
+let currentUser = localStorage.getItem(STORAGE_CURRENT) || '';
+
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MAX_TIMEOUT = 2147483647;
+let timers = {}; // id -> timeoutId
+let deferredPrompt = null;
+
+// service worker registration
+if ('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').then(()=>console.log('sw registered')).catch(e=>console.warn(e));
+}
+
+// install prompt
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault(); deferredPrompt = e;
+  document.getElementById('btnInstall').style.display = 'inline-block';
+});
+document.getElementById('btnInstall').addEventListener('click', async ()=>{
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  document.getElementById('btnInstall').style.display = 'none';
+});
+
+// helper selectors
+const $ = id => document.getElementById(id);
+const weekEl = $('week');
+const profilesEl = $('profiles');
+const fileIn = $('fileIn');
+
+function saveProfiles(){ localStorage.setItem(STORAGE_PROFILES, JSON.stringify(profiles)); }
+function setCurrent(user){
+  currentUser = user || '';
+  if (currentUser) localStorage.setItem(STORAGE_CURRENT, currentUser);
+  else localStorage.removeItem(STORAGE_CURRENT);
+  $('user').value = currentUser;
+  refreshProfilesList();
+  loadUser(user);
+}
+
+function refreshProfilesList(){
+  profilesEl.innerHTML = '';
+  const keys = Object.keys(profiles).sort();
+  if (keys.length===0) profilesEl.innerHTML = '<option disabled>No saved profiles</option>';
+  for (const k of keys){
+    const opt = document.createElement('option'); opt.value=k; opt.textContent=k; profilesEl.appendChild(opt);
+  }
+}
+
+// render weekly grid
+function renderWeek(timetable){
+  weekEl.innerHTML = '';
+  const map = {Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6,Sun:0};
+  // make day arrays
+  const days = {Sun:[],Mon:[],Tue:[],Wed:[],Thu:[],Fri:[],Sat:[]};
+  for (const ev of (timetable||[])) {
+    if (!days[ev.day]) days[ev.day] = [];
+    days[ev.day].push(ev);
+  }
+  // for each day create card
+  const order = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  for (const d of order){
+    const div = document.createElement('div'); div.className='day-card';
+    div.innerHTML = `<strong>${d}</strong><div class="small">${DAYS.indexOf(d)!==-1? '' : ''}</div>`;
+    const arr = days[d]||[];
+    arr.sort((a,b)=>a.time.localeCompare(b.time));
+    for (const ev of arr){
+      const evdiv = document.createElement('div'); evdiv.className='event';
+      evdiv.innerHTML = `<div><strong>${ev.name}</strong></div>
+        <div class="small">${ev.time} • ${ev.duration}m • Rem ${ev.rem}m</div>
+        <div style="margin-top:6px"><button data-day="${d}" data-time="${ev.time}" data-name="${ev.name}" class="btn-edit">Edit</button> <button data-day="${d}" data-time="${ev.time}" data-name="${ev.name}" class="btn-del">Delete</button></div>`;
+      div.appendChild(evdiv);
+    }
+    weekEl.appendChild(div);
+  }
+  // attach handlers
+  weekEl.querySelectorAll('.btn-del').forEach(b => {
+    b.addEventListener('click', (e)=>{
+      const name = b.getAttribute('data-name'); const time = b.getAttribute('data-time'); const day = b.getAttribute('data-day');
+      if (!currentUser) return alert('Load or save a profile first');
+      const arr = profiles[currentUser] || [];
+      const idx = arr.findIndex(x=>x.name===name && x.time===time && x.day===day);
+      if (idx>-1){ arr.splice(idx,1); profiles[currentUser]=arr; saveProfiles(); renderWeek(arr); scheduleAll(); }
+    });
+  });
+  weekEl.querySelectorAll('.btn-edit').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      if (!currentUser) return alert('Load or save a profile first');
+      const name = b.getAttribute('data-name'); const time = b.getAttribute('data-time'); const day = b.getAttribute('data-day');
+      const arr = profiles[currentUser] || [];
+      const idx = arr.findIndex(x=>x.name===name && x.time===time && x.day===day);
+      if (idx===-1) return;
+      const ev = arr[idx];
+      const newName = prompt('Name', ev.name); if (newName===null) return;
+      const newDay = prompt('Day (Mon/Tue..)', ev.day); if (newDay===null) return;
+      const newTime = prompt('Time HH:MM', ev.time); if (newTime===null) return;
+      const newDur = prompt('Duration minutes', ev.duration); if (newDur===null) return;
+      const newRem = prompt('Reminder minutes before', ev.rem); if (newRem===null) return;
+      arr[idx] = { name: newName, day: newDay, time: newTime, duration: parseInt(newDur,10)||50, rem: parseInt(newRem,10)||10 };
+      profiles[currentUser]=arr; saveProfiles(); renderWeek(arr); scheduleAll();
+    });
+  });
+}
+
+// add form
+$('addForm').addEventListener('submit', (e)=>{
+  e.preventDefault();
+  if (!$('user').value && !currentUser) return alert('Enter a student name/class then Save to store timetable');
+  const name = $('cname').value.trim();
+  const day = $('cday').value;
+  const time = $('ctime').value;
+  const dur = parseInt($('cdur').value,10) || 50;
+  const rem = parseInt($('crem').value,10) || 10;
+  if (!name || !time) return alert('Name & time required');
+  const user = $('user').value.trim() || currentUser;
+  if (!profiles[user]) profiles[user] = [];
+  profiles[user].push({ name, day, time, duration:dur, rem });
+  saveProfiles(); setCurrent(user);
+  renderWeek(profiles[user]);
+  scheduleAll();
+  $('addForm').reset();
+});
+
+// save / load / clear
+$('btnSave').addEventListener('click', ()=>{
+  const name = $('user').value.trim();
+  if (!name) return alert('Enter name/class to save profile');
+  if (!profiles[name]) profiles[name] = [];
+  // if editing timetable manually ensure it's saved
+  saveProfiles(); setCurrent(name);
+  alert('Saved profile: ' + name);
+});
+$('btnLoad').addEventListener('click', ()=>{
+  const name = $('user').value.trim();
+  if (!name) return alert('Enter name/class to load');
+  if (!profiles[name]) return alert('No saved profile with that name');
+  setCurrent(name);
+  renderWeek(profiles[name]);
+  scheduleAll();
+});
+$('btnClear').addEventListener('click', ()=>{
+  if (!confirm('Clear local saved profiles and current profile?')) return;
+  profiles = {}; saveProfiles(); setCurrent('');
+  renderWeek([]);
+});
+
+// profiles select quick load
+profilesEl.addEventListener('dblclick', ()=> {
+  const name = profilesEl.value;
+  if (!name) return;
+  setCurrent(name);
+  renderWeek(profiles[name]);
+  scheduleAll();
+});
+
+// export / import
+$('btnExport').addEventListener('click', ()=>{
+  const user = $('user').value.trim() || currentUser;
+  if (!user || !profiles[user]) return alert('Load or save a profile first to export');
+  const blob = new Blob([JSON.stringify(profiles[user], null,2)], {type:'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = user + '_timetable.json'; a.click();
+});
+$('btnImport').addEventListener('click', ()=> fileIn.click());
+fileIn.addEventListener('change', async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const txt = await f.text();
+    const arr = JSON.parse(txt);
+    if (!Array.isArray(arr)) return alert('Invalid file');
+    const user = $('user').value.trim() || prompt('Profile name to import into?');
+    if (!user) return;
+    profiles[user] = arr;
+    saveProfiles(); setCurrent(user); renderWeek(arr); scheduleAll();
+    alert('Imported into ' + user);
+  } catch(err){ alert('Import failed: ' + err.message); }
+});
+
+// request permission button
+$('reqPerm').addEventListener('click', async ()=>{
+  const p = await Notification.requestPermission();
+  alert('Notification permission: ' + p);
+});
+
+// schedule utilities
+
+function weekdayToIndex(day){
+  const map = {Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
+  return map[day] ?? 0;
+}
+
+function nextWeeklyOccurrence(dayStr, timeStr){
+  // returns Date for next occurrence of weekly day/time (today included)
+  const now = new Date();
+  const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0,0,0,0);
+  const [hh,mm] = timeStr.split(':').map(Number);
+  // start candidate today at hh:mm
+  const candidate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
+  const targetWeekday = weekdayToIndex(dayStr);
+  const cur = candidate.getDay();
+  let delta = (targetWeekday - cur + 7) % 7;
+  // if same day but time passed, then need next week's day
+  if (delta === 0 && candidate.getTime() <= now.getTime()) delta = 7;
+  candidate.setDate(candidate.getDate() + delta);
+  return candidate;
+}
+
+function scheduleAll(){
+  // clear
+  Object.values(timers).forEach(t => clearTimeout(t));
+  timers = {};
+  // schedule next occurrence for each event of current profile
+  if (!currentUser || !profiles[currentUser]) return;
+  const arr = profiles[currentUser];
+  for (const ev of arr){
+    const next = nextWeeklyOccurrence(ev.day, ev.time);
+    scheduleOccurrence(ev, next);
+  }
+}
+
+function scheduleOccurrence(evObj, startDate){
+  const notifyAt = startDate.getTime() - ( (evObj.rem || 0) * 60 * 1000 );
+  const now = Date.now();
+  if (notifyAt <= now) return; // already passed
+  const id = 'occ_' + currentUser + '_' + evObj.name.replace(/\s+/g,'') + '_' + startDate.toDateString();
+  scheduleTimeout(id, notifyAt - now, () => {
+    showNotification(evObj.name + ' — Reminder', `${evObj.name} starts at ${startDate.toLocaleTimeString()}`);
+    // after notification, schedule the next week's occurrence
+    const nextWeek = new Date(startDate.getTime() + 7*24*60*60*1000);
+    scheduleOccurrence(evObj, nextWeek);
+  });
+}
+
+function scheduleTimeout(id, ms, cb){
+  if (timers[id]) { clearTimeout(timers[id]); delete timers[id]; }
+  if (ms <= 0) return cb();
+  if (ms > MAX_TIMEOUT){
+    timers[id] = setTimeout(()=> scheduleTimeout(id, ms - MAX_TIMEOUT, cb), MAX_TIMEOUT);
+  } else {
+    timers[id] = setTimeout(()=> { try{ cb(); } finally { delete timers[id]; } }, ms);
+  }
+}
+
+function showNotification(title, body){
+  const opts = { body, tag: title + '|' + Date.now(), renotify:true };
+  if (navigator.serviceWorker && navigator.serviceWorker.ready){
+    navigator.serviceWorker.ready.then(reg => {
+      if (Notification.permission === 'granted') {
+        try { reg.showNotification(title, opts); } catch(e){ new Notification(title, opts); }
+      }
+    });
+  } else {
+    if (Notification.permission === 'granted') new Notification(title, opts);
+  }
+}
+
+// on Login: detect today's missed classes and schedule upcoming
+$('btnLogin').addEventListener('click', ()=>{
+  if (!$('user').value && !currentUser) return alert('Enter your name/class or load saved profile');
+  const user = $('user').value.trim() || currentUser;
+  if (!profiles[user]) return alert('No profile found for ' + user);
+  setCurrent(user);
+  const arr = profiles[user];
+  const todayIdx = new Date().getDay();
+  const now = Date.now();
+  const missed = [];
+  const ongoing = [];
+  const upcoming = [];
+  for (const c of arr){
+    const [hh,mm] = c.time.split(':').map(Number);
+    const classStart = new Date(); classStart.setHours(hh,mm,0,0);
+    // move classStart to this week's day
+    const target = weekdayToIndex(c.day);
+    const cur = classStart.getDay();
+    let delta = (target - cur + 7) % 7;
+    if (delta !== 0) classStart.setDate(classStart.getDate() + delta);
+    const classEnd = new Date(classStart.getTime() + (c.duration||50)*60000);
+    if (now > classEnd.getTime()){
+      // missed
+      missed.push({c, start: classStart});
+    } else if (now >= classStart.getTime() && now <= classEnd.getTime()){
+      ongoing.push({c, start: classStart});
+    } else {
+      upcoming.push({c, start: classStart});
+    }
+  }
+  // notify missed
+  if (missed.length){
+    for (const m of missed) showNotification('Missed: ' + m.c.name, `${m.c.name} @ ${m.start.toLocaleTimeString()} has ended — you may have missed it.`);
+    alert('Missed classes today: ' + missed.map(x=>x.c.name + ' @ ' + x.start.toLocaleTimeString()).join(', '));
+  } else {
+    // optionally say no missed
+    // alert('No missed classes for today');
+  }
+  // notify ongoing
+  if (ongoing.length){
+    for (const o of ongoing) showNotification('Ongoing: ' + o.c.name, `${o.c.name} started at ${o.start.toLocaleTimeString()}`);
+  }
+  // schedule upcoming for today and future weekly
+  scheduleAll();
+  renderWeek(profiles[user]);
+});
+
+// schedule next-button
+$('btnScheduleAll').addEventListener('click', scheduleAll);
+
+// init
+(function init(){
+  refreshProfilesList();
+  if (currentUser) $('user').value = currentUser;
+  if (currentUser && profiles[currentUser]) renderWeek(profiles[currentUser]);
+})();
+
+</script>
+</body>
+</html>index
