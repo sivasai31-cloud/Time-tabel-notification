@@ -6,9 +6,7 @@
 <title>Campus Timetable Notifier</title>
 <link rel="manifest" href="manifest.json">
 <style>
-  :root{
-    --bg:#061427; --card:rgba(255,255,255,0.03); --muted:#9fb0c8; --accent:#ff8a00;
-  }
+  :root{--bg:#061427;--card:rgba(255,255,255,0.03);--muted:#9fb0c8;--accent:#ff8a00}
   *{box-sizing:border-box}
   body{margin:0;font-family:Inter,system-ui,Roboto,Arial;background:linear-gradient(180deg,#02111b,#061427);color:#eaf2fb;min-height:100vh;padding:18px;display:flex;justify-content:center}
   .wrap{width:100%;max-width:1100px}
@@ -19,13 +17,12 @@
   input,select,button,textarea{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
   form.row{display:flex;gap:8px;flex-wrap:wrap}
   .small{font-size:13px;color:var(--muted)}
-  table{width:100%;border-collapse:collapse}
-  th,td{padding:8px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.03);font-size:13px}
   .week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:10px}
   .day-card{background:rgba(255,255,255,0.02);padding:8px;border-radius:8px;min-height:90px}
   .event{background:rgba(255,255,255,0.03);padding:6px;border-radius:6px;margin-bottom:6px;font-size:13px}
   .controls{display:flex;gap:8px;flex-wrap:wrap}
   .inline{display:inline-flex;gap:8px;align-items:center}
+  label.inline{display:inline-flex;gap:6px;align-items:center;font-size:13px}
   @media(max-width:980px){ .grid{grid-template-columns:1fr} .week-grid{grid-template-columns:repeat(2,1fr)} }
   @media(max-width:560px){ .week-grid{grid-template-columns:repeat(1,1fr)} form.row{flex-direction:column} }
 </style>
@@ -34,7 +31,7 @@
 <div class="wrap">
   <header>
     <h1>Campus Timetable Notifier</h1>
-    <div class="small">Save timetable • Install as app • Get reminders</div>
+    <div class="small">Save timetable • Install as app • Generic reminders</div>
   </header>
 
   <div class="grid">
@@ -56,7 +53,7 @@
 
       <h3 style="margin:6px 0">Add / Edit weekly class</h3>
       <form id="addForm" class="row">
-        <input id="cname" placeholder="Subject (e.g., DBMS)" required />
+        <input id="cname" placeholder="(optional) Subject name — leave empty for generic" />
         <select id="cday">
           <option value="Mon">Mon</option><option value="Tue">Tue</option><option value="Wed">Wed</option>
           <option value="Thu">Thu</option><option value="Fri">Fri</option><option value="Sat">Sat</option>
@@ -65,13 +62,13 @@
         <input id="ctime" type="time" required />
         <input id="cdur" type="number" min="10" value="50" style="width:88px" />
         <select id="crem">
-          <option value="0">At time</option><option value="5">5 min before</option>
-          <option value="10" selected>10 min before</option><option value="30">30 min before</option>
+          <option value="0">At time</option><option value="5">5 min</option>
+          <option value="10" selected>10 min</option><option value="30">30 min</option>
         </select>
         <button type="submit">Add</button>
       </form>
 
-      <div class="small" style="margin-top:8px">Add recurring weekly classes. Save under your name/class so other students can load it from the same device/browser.</div>
+      <div style="margin-top:8px" class="small">You can leave Subject empty — app will still notify using times only. Default duration used if left blank.</div>
 
       <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)">
 
@@ -82,6 +79,11 @@
           <button id="btnImport">Import JSON</button>
           <input id="fileIn" type="file" accept="application/json" style="display:none" />
         </div>
+      </div>
+
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+        <label class="inline"><input type="checkbox" id="anonToggle"> Hide subject names in notifications</label>
+        <label class="inline small">Default duration (min): <input id="defaultDur" type="number" value="50" style="width:88px;margin-left:6px"></label>
       </div>
 
       <div id="week" class="week-grid" aria-live="polite"></div>
@@ -107,7 +109,7 @@
       <div style="margin-top:10px">
         <div class="small">Saved profiles on device:</div>
         <select id="profiles" size="6" style="width:100%;margin-top:6px"></select>
-        <div style="margin-top:8px" class="small">Pick a profile to load that timetable. Profiles are saved per browser (localStorage).</div>
+        <div style="margin-top:8px" class="small">Pick a profile and double-click to load it. Profiles stored in localStorage.</div>
       </div>
 
       <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)">
@@ -115,8 +117,8 @@
       <div>
         <div class="small"><strong>How it works</strong></div>
         <ol class="small">
-          <li>Enter name/class → Add weekly classes → Save.</li>
-          <li>Tap Login / Use Saved when you open the app — it will notify missed classes immediately and schedule reminders for upcoming classes.</li>
+          <li>Enter name/class → Add weekly class times → Save.</li>
+          <li>Tap Login → immediate missed alerts & scheduling for upcoming classes.</li>
           <li>Install as PWA for better background behavior.</li>
         </ol>
       </div>
@@ -125,29 +127,25 @@
 </div>
 
 <script>
-/*
-  Campus Timetable Notifier - frontend only
-  - Save/load timetables per user (localStorage)
-  - Weekly recurring classes (Mon..Sun)
-  - On Login: detect missed classes today and show notifications + schedule upcoming reminders
-  - Schedules next weekly occurrence for each timetable row
-  - Uses Service Worker showNotification when possible
-*/
-
-const STORAGE_PROFILES = 'ct_profiles_v1'; // stores map: name -> timetable array
+/* Full app JS - profiles, anonymize defaults, scheduling, missed detection */
+const STORAGE_PROFILES = 'ct_profiles_v1';
 const STORAGE_CURRENT = 'ct_current_user_v1';
+const STORAGE_ANON = 'ct_anonymize_v1';
+const STORAGE_DEFAULT_DUR = 'ct_default_duration_v1';
 
 let profiles = JSON.parse(localStorage.getItem(STORAGE_PROFILES) || '{}');
 let currentUser = localStorage.getItem(STORAGE_CURRENT) || '';
+let ANON = (localStorage.getItem(STORAGE_ANON) === 'true');
+let DEFAULT_DURATION = parseInt(localStorage.getItem(STORAGE_DEFAULT_DUR) || '50', 10);
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MAX_TIMEOUT = 2147483647;
-let timers = {}; // id -> timeoutId
+let timers = {};
 let deferredPrompt = null;
 
-// service worker registration
-if ('serviceWorker' in navigator){
-  navigator.serviceWorker.register('sw.js').then(()=>console.log('sw registered')).catch(e=>console.warn(e));
+// Service worker registration
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').then(()=>console.log('sw registered')).catch(()=>{});
 }
 
 // install prompt
@@ -163,11 +161,13 @@ document.getElementById('btnInstall').addEventListener('click', async ()=>{
   document.getElementById('btnInstall').style.display = 'none';
 });
 
-// helper selectors
+// helpers
 const $ = id => document.getElementById(id);
 const weekEl = $('week');
 const profilesEl = $('profiles');
 const fileIn = $('fileIn');
+const anonToggle = $('anonToggle');
+const defaultDurInput = $('defaultDur');
 
 function saveProfiles(){ localStorage.setItem(STORAGE_PROFILES, JSON.stringify(profiles)); }
 function setCurrent(user){
@@ -178,38 +178,39 @@ function setCurrent(user){
   refreshProfilesList();
   loadUser(user);
 }
-
 function refreshProfilesList(){
   profilesEl.innerHTML = '';
   const keys = Object.keys(profiles).sort();
-  if (keys.length===0) profilesEl.innerHTML = '<option disabled>No saved profiles</option>';
+  if (keys.length===0) { const o = document.createElement('option'); o.disabled=true; o.text='No saved profiles'; profilesEl.appendChild(o); return; }
   for (const k of keys){
     const opt = document.createElement('option'); opt.value=k; opt.textContent=k; profilesEl.appendChild(opt);
   }
+}
+function loadUser(name){
+  if (!name) { renderWeek([]); return; }
+  const arr = profiles[name] || [];
+  renderWeek(arr);
 }
 
 // render weekly grid
 function renderWeek(timetable){
   weekEl.innerHTML = '';
-  const map = {Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6,Sun:0};
-  // make day arrays
   const days = {Sun:[],Mon:[],Tue:[],Wed:[],Thu:[],Fri:[],Sat:[]};
   for (const ev of (timetable||[])) {
     if (!days[ev.day]) days[ev.day] = [];
     days[ev.day].push(ev);
   }
-  // for each day create card
   const order = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   for (const d of order){
     const div = document.createElement('div'); div.className='day-card';
-    div.innerHTML = `<strong>${d}</strong><div class="small">${DAYS.indexOf(d)!==-1? '' : ''}</div>`;
+    div.innerHTML = `<strong>${d}</strong><div class="small"></div>`;
     const arr = days[d]||[];
     arr.sort((a,b)=>a.time.localeCompare(b.time));
     for (const ev of arr){
       const evdiv = document.createElement('div'); evdiv.className='event';
-      evdiv.innerHTML = `<div><strong>${ev.name}</strong></div>
-        <div class="small">${ev.time} • ${ev.duration}m • Rem ${ev.rem}m</div>
-        <div style="margin-top:6px"><button data-day="${d}" data-time="${ev.time}" data-name="${ev.name}" class="btn-edit">Edit</button> <button data-day="${d}" data-time="${ev.time}" data-name="${ev.name}" class="btn-del">Delete</button></div>`;
+      evdiv.innerHTML = `<div><strong>${ev.name || '(class)'}</strong></div>
+        <div class="small">${ev.time} • ${ev.duration||DEFAULT_DURATION}m • Rem ${ev.rem||10}m</div>
+        <div style="margin-top:6px"><button data-day="${d}" data-time="${ev.time}" data-name="${ev.name||''}" class="btn-edit">Edit</button> <button data-day="${d}" data-time="${ev.time}" data-name="${ev.name||''}" class="btn-del">Delete</button></div>`;
       div.appendChild(evdiv);
     }
     weekEl.appendChild(div);
@@ -232,12 +233,12 @@ function renderWeek(timetable){
       const idx = arr.findIndex(x=>x.name===name && x.time===time && x.day===day);
       if (idx===-1) return;
       const ev = arr[idx];
-      const newName = prompt('Name', ev.name); if (newName===null) return;
+      const newName = prompt('Name (optional)', ev.name); if (newName===null) return;
       const newDay = prompt('Day (Mon/Tue..)', ev.day); if (newDay===null) return;
-      const newTime = prompt('Time HH:MM', ev.time); if (newTime===null) return;
-      const newDur = prompt('Duration minutes', ev.duration); if (newDur===null) return;
-      const newRem = prompt('Reminder minutes before', ev.rem); if (newRem===null) return;
-      arr[idx] = { name: newName, day: newDay, time: newTime, duration: parseInt(newDur,10)||50, rem: parseInt(newRem,10)||10 };
+      const newTime = prompt('Time (HH:MM)', ev.time); if (newTime===null) return;
+      const newDur = prompt('Duration (minutes)', ev.duration||DEFAULT_DURATION); if (newDur===null) return;
+      const newRem = prompt('Reminder minutes before', ev.rem||10); if (newRem===null) return;
+      arr[idx] = { name: newName || '', day: newDay, time: newTime, duration: parseInt(newDur,10)||DEFAULT_DURATION, rem: parseInt(newRem,10)||10 };
       profiles[currentUser]=arr; saveProfiles(); renderWeek(arr); scheduleAll();
     });
   });
@@ -246,28 +247,27 @@ function renderWeek(timetable){
 // add form
 $('addForm').addEventListener('submit', (e)=>{
   e.preventDefault();
-  if (!$('user').value && !currentUser) return alert('Enter a student name/class then Save to store timetable');
   const name = $('cname').value.trim();
   const day = $('cday').value;
   const time = $('ctime').value;
-  const dur = parseInt($('cdur').value,10) || 50;
+  let dur = parseInt($('cdur').value,10);
+  if (!dur) dur = DEFAULT_DURATION;
   const rem = parseInt($('crem').value,10) || 10;
-  if (!name || !time) return alert('Name & time required');
-  const user = $('user').value.trim() || currentUser;
+  if (!time) return alert('Time required');
+  let user = $('user').value.trim() || currentUser;
+  if (!user) return alert('Enter name/class and Save to store timetable');
   if (!profiles[user]) profiles[user] = [];
-  profiles[user].push({ name, day, time, duration:dur, rem });
+  profiles[user].push({ name: name || '', day, time, duration: dur, rem });
   saveProfiles(); setCurrent(user);
-  renderWeek(profiles[user]);
-  scheduleAll();
+  renderWeek(profiles[user]); scheduleAll();
   $('addForm').reset();
 });
 
-// save / load / clear
+// save/load/clear
 $('btnSave').addEventListener('click', ()=>{
   const name = $('user').value.trim();
   if (!name) return alert('Enter name/class to save profile');
-  if (!profiles[name]) profiles[name] = [];
-  // if editing timetable manually ensure it's saved
+  if (!profiles[name]) profiles[name] = profiles[name] || [];
   saveProfiles(); setCurrent(name);
   alert('Saved profile: ' + name);
 });
@@ -276,22 +276,19 @@ $('btnLoad').addEventListener('click', ()=>{
   if (!name) return alert('Enter name/class to load');
   if (!profiles[name]) return alert('No saved profile with that name');
   setCurrent(name);
-  renderWeek(profiles[name]);
-  scheduleAll();
+  renderWeek(profiles[name]); scheduleAll();
 });
 $('btnClear').addEventListener('click', ()=>{
   if (!confirm('Clear local saved profiles and current profile?')) return;
-  profiles = {}; saveProfiles(); setCurrent('');
-  renderWeek([]);
+  profiles = {}; saveProfiles(); setCurrent(''); renderWeek([]);
 });
 
-// profiles select quick load
+// profiles select quick load (double click)
 profilesEl.addEventListener('dblclick', ()=> {
   const name = profilesEl.value;
   if (!name) return;
   setCurrent(name);
-  renderWeek(profiles[name]);
-  scheduleAll();
+  renderWeek(profiles[name]); scheduleAll();
 });
 
 // export / import
@@ -310,46 +307,53 @@ fileIn.addEventListener('change', async (e) => {
     if (!Array.isArray(arr)) return alert('Invalid file');
     const user = $('user').value.trim() || prompt('Profile name to import into?');
     if (!user) return;
-    profiles[user] = arr;
-    saveProfiles(); setCurrent(user); renderWeek(arr); scheduleAll();
+    profiles[user] = arr.map(x=>({
+      name: x.name || '',
+      day: x.day,
+      time: x.time,
+      duration: x.duration || DEFAULT_DURATION,
+      rem: x.rem || 10
+    }));
+    saveProfiles(); setCurrent(user); renderWeek(profiles[user]); scheduleAll();
     alert('Imported into ' + user);
   } catch(err){ alert('Import failed: ' + err.message); }
 });
 
-// request permission button
-$('reqPerm').addEventListener('click', async ()=>{
+// settings: anon toggle + default duration UI
+anonToggle.checked = ANON;
+anonToggle.addEventListener('change', ()=>{
+  ANON = anonToggle.checked;
+  localStorage.setItem(STORAGE_ANON, ANON ? 'true' : 'false');
+});
+defaultDurInput.value = DEFAULT_DURATION;
+defaultDurInput.addEventListener('change', ()=>{
+  DEFAULT_DURATION = parseInt(defaultDurInput.value || '50', 10);
+  localStorage.setItem(STORAGE_DEFAULT_DUR, String(DEFAULT_DURATION));
+});
+
+// request permission
+$('reqPerm').addEventListener('click', async ()=> {
   const p = await Notification.requestPermission();
   alert('Notification permission: ' + p);
 });
 
-// schedule utilities
-
-function weekdayToIndex(day){
-  const map = {Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
-  return map[day] ?? 0;
-}
-
+// scheduling utils
+function weekdayToIndex(day){ const map={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6}; return map[day] ?? 0; }
 function nextWeeklyOccurrence(dayStr, timeStr){
-  // returns Date for next occurrence of weekly day/time (today included)
   const now = new Date();
-  const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0,0,0,0);
   const [hh,mm] = timeStr.split(':').map(Number);
-  // start candidate today at hh:mm
   const candidate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
   const targetWeekday = weekdayToIndex(dayStr);
   const cur = candidate.getDay();
   let delta = (targetWeekday - cur + 7) % 7;
-  // if same day but time passed, then need next week's day
   if (delta === 0 && candidate.getTime() <= now.getTime()) delta = 7;
   candidate.setDate(candidate.getDate() + delta);
   return candidate;
 }
 
 function scheduleAll(){
-  // clear
   Object.values(timers).forEach(t => clearTimeout(t));
   timers = {};
-  // schedule next occurrence for each event of current profile
   if (!currentUser || !profiles[currentUser]) return;
   const arr = profiles[currentUser];
   for (const ev of arr){
@@ -359,13 +363,16 @@ function scheduleAll(){
 }
 
 function scheduleOccurrence(evObj, startDate){
-  const notifyAt = startDate.getTime() - ( (evObj.rem || 0) * 60 * 1000 );
+  const rem = evObj.rem || 10;
+  const notifyAt = startDate.getTime() - rem*60*1000;
   const now = Date.now();
-  if (notifyAt <= now) return; // already passed
-  const id = 'occ_' + currentUser + '_' + evObj.name.replace(/\s+/g,'') + '_' + startDate.toDateString();
+  if (notifyAt <= now) return;
+  const id = 'occ_' + (currentUser||'u') + '_' + evObj.name.replace(/\s+/g,'') + '_' + startDate.toDateString();
   scheduleTimeout(id, notifyAt - now, () => {
-    showNotification(evObj.name + ' — Reminder', `${evObj.name} starts at ${startDate.toLocaleTimeString()}`);
-    // after notification, schedule the next week's occurrence
+    const title = ANON || !evObj.name ? 'Class Reminder' : (evObj.name + ' — Reminder');
+    const body = ANON || !evObj.name ? `You have a class at ${startDate.toLocaleTimeString()}` : `${evObj.name} starts at ${startDate.toLocaleTimeString()}`;
+    showNotification(title, body);
+    // reschedule next week's occurrence
     const nextWeek = new Date(startDate.getTime() + 7*24*60*60*1000);
     scheduleOccurrence(evObj, nextWeek);
   });
@@ -388,69 +395,61 @@ function showNotification(title, body){
       if (Notification.permission === 'granted') {
         try { reg.showNotification(title, opts); } catch(e){ new Notification(title, opts); }
       }
-    });
+    }).catch(()=>{ if (Notification.permission === 'granted') new Notification(title, opts); });
   } else {
     if (Notification.permission === 'granted') new Notification(title, opts);
   }
 }
 
-// on Login: detect today's missed classes and schedule upcoming
+// on Login: show missed/ongoing & schedule everything
 $('btnLogin').addEventListener('click', ()=>{
-  if (!$('user').value && !currentUser) return alert('Enter your name/class or load saved profile');
   const user = $('user').value.trim() || currentUser;
+  if (!user) return alert('Enter your name/class or load saved profile');
   if (!profiles[user]) return alert('No profile found for ' + user);
   setCurrent(user);
   const arr = profiles[user];
-  const todayIdx = new Date().getDay();
   const now = Date.now();
-  const missed = [];
-  const ongoing = [];
-  const upcoming = [];
+  const missed = [], ongoing = [], upcoming = [];
+  const todayIdx = new Date().getDay();
   for (const c of arr){
+    // compute this week's occurrence for c.day
     const [hh,mm] = c.time.split(':').map(Number);
-    const classStart = new Date(); classStart.setHours(hh,mm,0,0);
-    // move classStart to this week's day
-    const target = weekdayToIndex(c.day);
-    const cur = classStart.getDay();
-    let delta = (target - cur + 7) % 7;
-    if (delta !== 0) classStart.setDate(classStart.getDate() + delta);
-    const classEnd = new Date(classStart.getTime() + (c.duration||50)*60000);
-    if (now > classEnd.getTime()){
-      // missed
+    const classStart = nextWeeklyOccurrence(c.day, c.time);
+    // if classStart is in future but on same day and earlier than now we already corrected nextWeeklyOccurrence
+    const classEnd = new Date(classStart.getTime() + (c.duration||DEFAULT_DURATION)*60000);
+    if (now > classEnd.getTime() && classStart.getDay() === todayIdx) {
       missed.push({c, start: classStart});
-    } else if (now >= classStart.getTime() && now <= classEnd.getTime()){
+    } else if (now >= classStart.getTime() && now <= classEnd.getTime()) {
       ongoing.push({c, start: classStart});
-    } else {
+    } else if (classStart.getDay() === todayIdx && now < classStart.getTime()) {
       upcoming.push({c, start: classStart});
     }
   }
-  // notify missed
   if (missed.length){
-    for (const m of missed) showNotification('Missed: ' + m.c.name, `${m.c.name} @ ${m.start.toLocaleTimeString()} has ended — you may have missed it.`);
-    alert('Missed classes today: ' + missed.map(x=>x.c.name + ' @ ' + x.start.toLocaleTimeString()).join(', '));
-  } else {
-    // optionally say no missed
-    // alert('No missed classes for today');
+    for (const m of missed) showNotification('Missed: ' + (ANON || !m.c.name ? 'Class' : m.c.name), `${(ANON||!m.c.name)?'A class':m.c.name} @ ${m.start.toLocaleTimeString()} has ended — you may have missed it.`);
+    alert('Missed classes today: ' + missed.map(x=> (x.c.name || 'Class') + ' @ ' + x.start.toLocaleTimeString()).join(', '));
   }
-  // notify ongoing
   if (ongoing.length){
-    for (const o of ongoing) showNotification('Ongoing: ' + o.c.name, `${o.c.name} started at ${o.start.toLocaleTimeString()}`);
+    for (const o of ongoing) showNotification('Ongoing: ' + (ANON || !o.c.name ? 'Class' : o.c.name), `${(ANON||!o.c.name)?'A class':o.c.name} started at ${o.start.toLocaleTimeString()}`);
   }
-  // schedule upcoming for today and future weekly
+  // schedule all occurrences
   scheduleAll();
   renderWeek(profiles[user]);
 });
 
-// schedule next-button
+// schedule-all button
 $('btnScheduleAll').addEventListener('click', scheduleAll);
 
 // init
 (function init(){
   refreshProfilesList();
+  if (localStorage.getItem(STORAGE_ANON)) {
+    ANON = (localStorage.getItem(STORAGE_ANON) === 'true');
+    anonToggle.checked = ANON;
+  }
+  if (localStorage.getItem(STORAGE_DEFAULT_DUR)) {
+    DEFAULT_DURATION = parseInt(localStorage.getItem(STORAGE_DEFAULT_DUR) || '50', 10);
+    defaultDurInput.value = DEFAULT_DURATION;
+  }
   if (currentUser) $('user').value = currentUser;
-  if (currentUser && profiles[currentUser]) renderWeek(profiles[currentUser]);
-})();
-
-</script>
-</body>
-</html>index
+  if (currentUser && profiles[cur
